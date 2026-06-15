@@ -1,0 +1,72 @@
+<div class="page">
+  <h1>SkyRoute &middot; Flight Status</h1>
+  <p class="hint">Try BA2490, QF12, AA100, DL55, LH400 or OUTAGE (date 2026-06-15).</p>
+
+  <form class="search" (ngSubmit)="search()">
+    <div class="field">
+      <label for="flightNumber">Flight number</label>
+      <input id="flightNumber" name="flightNumber" type="text"
+             [(ngModel)]="flightNumber" placeholder="e.g. BA2490" autocomplete="off" />
+    </div>
+
+    <div class="field">
+      <label for="date">Date</label>
+      <input id="date" name="date" type="date" [(ngModel)]="date" />
+    </div>
+
+    <button type="submit" [disabled]="loading">
+      {{ loading ? 'Searching...' : 'Search' }}
+    </button>
+  </form>
+
+  <!-- error state -->
+  <div class="error" *ngIf="error">{{ error }}</div>
+
+  <!-- result card -->
+  <div class="card" *ngIf="result && !error">
+    <div class="card-head">
+      <span class="flight">{{ result.flightNumber }}</span>
+      <span class="badge" [ngClass]="statusClass(result.status)">{{ result.status }}</span>
+    </div>
+
+    <p class="message" *ngIf="result.message">{{ result.message }}</p>
+
+    <dl class="details">
+      <div *ngIf="result.scheduledDeparture">
+        <dt>Scheduled departure</dt>
+        <dd>{{ result.scheduledDeparture | date:'short':'UTC' }} UTC</dd>
+      </div>
+      <div *ngIf="result.actualDeparture">
+        <dt>Actual departure</dt>
+        <dd>{{ result.actualDeparture | date:'short':'UTC' }} UTC</dd>
+      </div>
+      <div *ngIf="result.scheduledArrival">
+        <dt>Scheduled arrival</dt>
+        <dd>{{ result.scheduledArrival | date:'short':'UTC' }} UTC</dd>
+      </div>
+      <div *ngIf="result.actualArrival">
+        <dt>Actual arrival</dt>
+        <dd>{{ result.actualArrival | date:'short':'UTC' }} UTC</dd>
+      </div>
+
+      <!-- AeroTrack-only fields, only render when present -->
+      <div *ngIf="result.terminal">
+        <dt>Terminal</dt>
+        <dd>{{ result.terminal }}</dd>
+      </div>
+      <div *ngIf="result.gate">
+        <dt>Gate</dt>
+        <dd>{{ result.gate }}</dd>
+      </div>
+      <div *ngIf="result.delayReason">
+        <dt>Delay reason</dt>
+        <dd>{{ result.delayReason }}</dd>
+      </div>
+    </dl>
+
+    <div class="card-foot" *ngIf="result.source">
+      Source: {{ result.source }}
+      <span *ngIf="result.lastUpdatedUtc">&middot; updated {{ result.lastUpdatedUtc | date:'short':'UTC' }} UTC</span>
+    </div>
+  </div>
+</div>
