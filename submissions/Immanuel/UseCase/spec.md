@@ -90,3 +90,66 @@ GET /flights/status?flightNumber={code}&date={yyyy-MM-dd}
 - `flightNumber` and `date` both required -> 400 if missing.
 - bad date format -> 400.
 - otherwise 200 with a `FlightStatusResult` (status can be Unknown).
+
+---
+
+## Enhancement: search by route (added after the first cut)
+
+Some agents don't have the flight number but know the airports. A lookup can now be
+done by flight number **or** by route (from + to airport codes). The original
+flight-number behaviour is unchanged.
+
+### Query object
+
+The provider interface now takes one query object instead of loose params:
+
+```csharp
+public class FlightStatusQuery
+{
+    public string? FlightNumber { get; init; }
+    public string? FromCode { get; init; }
+    public string? ToCode { get; init; }
+    public DateOnly Date { get; init; }
+    public bool IsByFlightNumber => !string.IsNullOrWhiteSpace(FlightNumber);
+    public bool IsByRoute => !string.IsNullOrWhiteSpace(FromCode) && !string.IsNullOrWhiteSpace(ToCode);
+}
+
+public interface IFlightStatusProvider
+{
+    string Name { get; }
+    Task<IReadOnlyList<FlightStatusResult>> GetStatusAsync(FlightStatusQuery query, CancellationToken ct);
+}
+```
+
+A provider returns an empty list for "no match", 0..1 for a flight-number lookup, and
+0..N for a route lookup.
+
+### New result fields
+
+`FlightStatusResult` gains `originCode` and `destinationCode` (IATA airport codes,
+e.g. `LHR`, `JFK`). Used for route search and shown on the card.
+
+### Generalised selection
+
+The aggregator now returns a **list**: it gathers every provider's matches, groups by
+flight number, and keeps the freshest provider's version of each flight (the same
+latest-`lastUpdatedUtc` rule as before). A flight-number lookup is just the special
+case of one group.
+
+### Endpoints
+
+```
+GET /flights/status?flightNumber={code}&date={yyyy-MM-dd}   (unchanged - single object)
+GET /flights/search?from={IATA}&to={IATA}&date={yyyy-MM-dd}  (new - array of results)
+```
+
+- `/flights/search`: `from`, `to`, `date` required -> 400 if missing/bad.
+- Returns a JSON array of matching flights (empty array if none on that route).
+- Kept as a separate endpoint so the existing single-object response is untouched.
+
+### Assumptions
+
+- Airport codes are 3-letter IATA, matched case-insensitively.
+- If a route matches several flights, all are returned (sorted by scheduled departure).
+- The two endpoints are separate rather than one endpoint returning different shapes,
+  so the original `/flights/status` contract doesn't change.

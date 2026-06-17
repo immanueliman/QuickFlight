@@ -27,26 +27,67 @@ builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p =>
 var app = builder.Build();
 app.UseCors(CorsPolicy);
 
-app.MapGet("/", () => "Flight Status API. Try /flights/status?flightNumber=BA2490&date=2026-06-15");
+app.MapGet("/", () => "Flight Status API. Try /flights/status?flightNumber=BA2490&date=2026-06-15 "
+    + "or /flights/search?from=LHR&to=JFK&date=2026-06-15");
 
+// Look up a single known flight by number. Returns one result (Unknown if nobody has it).
 app.MapGet("/flights/status", async (string? flightNumber, string? date,
     FlightStatusService service, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(flightNumber))
         return Results.BadRequest(new { error = "flightNumber is required" });
 
-    if (string.IsNullOrWhiteSpace(date))
-        return Results.BadRequest(new { error = "date is required" });
+    if (!TryParseDate(date, out var parsedDate, out var dateError))
+        return Results.BadRequest(new { error = dateError });
 
-    if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out var parsedDate))
-        return Results.BadRequest(new { error = "date must be in yyyy-MM-dd format" });
+    var query = new FlightStatusQuery { FlightNumber = flightNumber.Trim(), Date = parsedDate };
+    var matches = await service.GetStatusAsync(query, ct);
 
-    var result = await service.GetStatusAsync(flightNumber.Trim(), parsedDate, ct);
-    return Results.Ok(result);
+    if (matches.Count == 0)
+        return Results.Ok(new FlightStatusResult
+        {
+            FlightNumber = flightNumber.Trim(),
+            Date = parsedDate.ToString("yyyy-MM-dd"),
+            Status = UnifiedStatus.Unknown,
+            Message = "No flight data available from any provider."
+        });
+
+    return Results.Ok(matches[0]);
+});
+
+// Find flights by route when the agent doesn't have a flight number. Returns a list
+// (possibly empty) of the matching flights' statuses.
+app.MapGet("/flights/search", async (string? from, string? to, string? date,
+    FlightStatusService service, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
+        return Results.BadRequest(new { error = "from and to airport codes are required" });
+
+    if (!TryParseDate(date, out var parsedDate, out var dateError))
+        return Results.BadRequest(new { error = dateError });
+
+    var query = new FlightStatusQuery { FromCode = from.Trim(), ToCode = to.Trim(), Date = parsedDate };
+    var matches = await service.GetStatusAsync(query, ct);
+
+    return Results.Ok(matches);
 });
 
 app.Run();
+
+// shared date validation for both endpoints
+static bool TryParseDate(string? date, out DateOnly parsed, out string error)
+{
+    parsed = default;
+    error = "";
+    if (string.IsNullOrWhiteSpace(date)) { error = "date is required"; return false; }
+    if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out parsed))
+    {
+        error = "date must be in yyyy-MM-dd format";
+        return false;
+    }
+    return true;
+}
 
 // exposed so the test project (WebApplicationFactory) can boot the app
 public partial class Program { }

@@ -10,6 +10,11 @@ public class FlightStatusResult
 
     public UnifiedStatus Status { get; set; } = UnifiedStatus.Unknown;
 
+    // Route - origin/destination airport codes (IATA). Used for route search and
+    // shown on the card so the agent can confirm the right flight.
+    public string? OriginCode { get; set; }
+    public string? DestinationCode { get; set; }
+
     public DateTime? ScheduledDeparture { get; set; }
     public DateTime? ActualDeparture { get; set; }
     public DateTime? ScheduledArrival { get; set; }

@@ -3,9 +3,10 @@ using FlightStatus.Api.Providers;
 
 namespace FlightStatus.Api.Services;
 
-// Asks every registered provider, drops the ones that fail or have nothing, and
-// picks the freshest answer (latest lastUpdatedUtc). Falls back to Unknown when
-// nobody can help.
+// Asks every registered provider, drops the ones that fail, then collapses the
+// combined results: one card per distinct flight, keeping the freshest provider's
+// version (latest lastUpdatedUtc). Works the same for a single-flight lookup (one
+// card out) and a route search (several cards out).
 public class FlightStatusService
 {
     private readonly IEnumerable<IFlightStatusProvider> _providers;
@@ -18,56 +19,38 @@ public class FlightStatusService
         _logger = logger;
     }
 
-    public async Task<FlightStatusResult> GetStatusAsync(string flightNumber, DateOnly date,
+    public async Task<IReadOnlyList<FlightStatusResult>> GetStatusAsync(FlightStatusQuery query,
         CancellationToken ct = default)
     {
-        var results = new List<FlightStatusResult>();
+        var all = new List<FlightStatusResult>();
 
         foreach (var provider in _providers)
         {
             try
             {
-                var r = await provider.GetStatusAsync(flightNumber, date, ct);
-                if (r != null)
-                {
-                    results.Add(r);
-                    _logger.LogInformation("{Provider} returned {Status} for {Flight}",
-                        provider.Name, r.Status, flightNumber);
-                }
-                else
-                {
-                    _logger.LogInformation("{Provider} had no record for {Flight}",
-                        provider.Name, flightNumber);
-                }
+                var results = await provider.GetStatusAsync(query, ct);
+                all.AddRange(results);
+                _logger.LogInformation("{Provider} returned {Count} result(s)", provider.Name, results.Count);
             }
             catch (Exception ex)
             {
                 // a provider being down should not fail the whole lookup
-                _logger.LogWarning(ex, "{Provider} failed for {Flight}", provider.Name, flightNumber);
+                _logger.LogWarning(ex, "{Provider} failed for query {Query}", provider.Name, Describe(query));
             }
         }
 
-        if (results.Count == 0)
-        {
-            _logger.LogInformation("No provider had data for {Flight} on {Date}", flightNumber, date);
-            return new FlightStatusResult
-            {
-                FlightNumber = flightNumber,
-                Date = date.ToString("yyyy-MM-dd"),
-                Status = UnifiedStatus.Unknown,
-                Message = "No flight data available from any provider."
-            };
-        }
+        // one card per flight - if both providers returned the same flight, keep the
+        // one with the newest lastUpdatedUtc. Ordered by departure for a stable display.
+        var deduped = all
+            .GroupBy(r => r.FlightNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(r => r.LastUpdatedUtc ?? DateTime.MinValue).First())
+            .OrderBy(r => r.ScheduledDeparture ?? DateTime.MaxValue)
+            .ToList();
 
-        // both (or more) responded -> newest lastUpdatedUtc wins
-        var winner = results
-            .OrderByDescending(r => r.LastUpdatedUtc ?? DateTime.MinValue)
-            .First();
-
-        if (results.Count > 1)
-            _logger.LogInformation("Picked {Provider} for {Flight} (latest update)",
-                winner.Source, flightNumber);
-
-        return winner;
+        _logger.LogInformation("Query {Query} -> {Count} flight(s)", Describe(query), deduped.Count);
+        return deduped;
     }
+
+    private static string Describe(FlightStatusQuery q) =>
+        q.IsByFlightNumber ? $"flight {q.FlightNumber}" : $"route {q.FromCode}->{q.ToCode}";
 }

@@ -12,6 +12,8 @@ public class AeroTrackProvider : IFlightStatusProvider
     private record AeroTrackResponse(
         string flightCode,
         string currentStatus,
+        string origin,
+        string destination,
         DateTime? scheduledDepartureUtc,
         DateTime? actualDepartureUtc,
         DateTime? scheduledArrivalUtc,
@@ -21,10 +23,10 @@ public class AeroTrackProvider : IFlightStatusProvider
         string? delayReasonText,
         DateTime lastUpdatedUtc);
 
-    private static readonly Dictionary<string, AeroTrackResponse> Data = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly List<AeroTrackResponse> Data = new()
     {
         // both providers know this one - AeroTrack's update here is the OLDER one
-        ["BA2490"] = new("BA2490", "ON_TIME",
+        new("BA2490", "ON_TIME", "JFK", "LHR",
             new DateTime(2026, 6, 15, 8, 30, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 8, 34, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 10, 45, 0, DateTimeKind.Utc),
@@ -33,7 +35,7 @@ public class AeroTrackProvider : IFlightStatusProvider
             new DateTime(2026, 6, 15, 9, 5, 0, DateTimeKind.Utc)),
 
         // delayed by 45 min on arrival, has a reason - AeroTrack is the NEWER one here
-        ["QF12"] = new("QF12", "DELAYED",
+        new("QF12", "DELAYED", "SYD", "LAX",
             new DateTime(2026, 6, 15, 7, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 7, 40, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 9, 15, 0, DateTimeKind.Utc),
@@ -41,7 +43,7 @@ public class AeroTrackProvider : IFlightStatusProvider
             "4", "D2", "Late inbound aircraft",
             new DateTime(2026, 6, 15, 9, 10, 0, DateTimeKind.Utc)),
 
-        ["AA100"] = new("AA100", "CANCELLED",
+        new("AA100", "CANCELLED", "ORD", "MIA",
             new DateTime(2026, 6, 15, 6, 0, 0, DateTimeKind.Utc),
             null,
             new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Utc),
@@ -49,33 +51,60 @@ public class AeroTrackProvider : IFlightStatusProvider
             "1", null, "Crew shortage",
             new DateTime(2026, 6, 15, 8, 0, 0, DateTimeKind.Utc)),
 
-        ["DL55"] = new("DL55", "DIVERTED",
+        new("DL55", "DIVERTED", "ATL", "BOS",
             new DateTime(2026, 6, 15, 5, 0, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 5, 5, 0, DateTimeKind.Utc),
             new DateTime(2026, 6, 15, 8, 0, 0, DateTimeKind.Utc),
             null,
             "3", "C9", "Diverted to BOS due to fog",
             new DateTime(2026, 6, 15, 7, 30, 0, DateTimeKind.Utc)),
+
+        // shares the LHR->JFK route with QuickFlight's VS3 - so a route search returns
+        // more than one flight
+        new("BA112", "ON_TIME", "LHR", "JFK",
+            new DateTime(2026, 6, 15, 11, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 15, 11, 8, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 15, 14, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 15, 14, 5, 0, DateTimeKind.Utc),
+            "5", "A1", null,
+            new DateTime(2026, 6, 15, 10, 30, 0, DateTimeKind.Utc)),
     };
 
-    public Task<FlightStatusResult?> GetStatusAsync(string flightNumber, DateOnly date, CancellationToken ct)
+    public Task<IReadOnlyList<FlightStatusResult>> GetStatusAsync(FlightStatusQuery query, CancellationToken ct)
     {
         // Simulated outage so we can show graceful degradation + logging.
-        if (string.Equals(flightNumber, "OUTAGE", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(query.FlightNumber, "OUTAGE", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("AeroTrack upstream timed out");
 
-        if (!Data.TryGetValue(flightNumber, out var raw))
-            return Task.FromResult<FlightStatusResult?>(null);
+        IEnumerable<AeroTrackResponse> matches;
+        if (query.IsByFlightNumber)
+            matches = Data.Where(d => string.Equals(d.flightCode, query.FlightNumber, StringComparison.OrdinalIgnoreCase));
+        else
+            matches = Data.Where(d =>
+                string.Equals(d.origin, query.FromCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(d.destination, query.ToCode, StringComparison.OrdinalIgnoreCase));
 
+        IReadOnlyList<FlightStatusResult> results = matches
+            .Select(raw => ToResult(raw, query.Date))
+            .ToList();
+
+        return Task.FromResult(results);
+    }
+
+    // Translate AeroTrack's raw shape into our unified model.
+    private FlightStatusResult ToResult(AeroTrackResponse raw, DateOnly date)
+    {
         var status = StatusMapper.FromAeroTrack(raw.currentStatus,
             raw.scheduledDepartureUtc, raw.actualDepartureUtc,
             raw.scheduledArrivalUtc, raw.actualArrivalUtc);
 
-        var result = new FlightStatusResult
+        return new FlightStatusResult
         {
             FlightNumber = raw.flightCode,
             Date = date.ToString("yyyy-MM-dd"),
             Status = status,
+            OriginCode = raw.origin,
+            DestinationCode = raw.destination,
             ScheduledDeparture = raw.scheduledDepartureUtc,
             ActualDeparture = raw.actualDepartureUtc,
             ScheduledArrival = raw.scheduledArrivalUtc,
@@ -86,7 +115,5 @@ public class AeroTrackProvider : IFlightStatusProvider
             Source = Name,
             LastUpdatedUtc = raw.lastUpdatedUtc
         };
-
-        return Task.FromResult<FlightStatusResult?>(result);
     }
 }

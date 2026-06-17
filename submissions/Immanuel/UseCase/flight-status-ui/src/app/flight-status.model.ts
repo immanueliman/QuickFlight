@@ -6,6 +6,8 @@ export interface FlightStatusResult {
   flightNumber: string;
   date: string;
   status: UnifiedStatus;
+  originCode?: string;
+  destinationCode?: string;
   scheduledDeparture?: string;
   actualDeparture?: string;
   scheduledArrival?: string;

@@ -8,7 +8,9 @@ public interface IFlightStatusProvider
 {
     string Name { get; }
 
-    // Returns null when this provider has no record for the flight/date.
-    // May throw if the provider is "down" - the aggregator handles that.
-    Task<FlightStatusResult?> GetStatusAsync(string flightNumber, DateOnly date, CancellationToken ct);
+    // Looks up by flight number or by route, depending on the query. Returns an empty
+    // list when this provider has no match (a flight-number query yields 0 or 1; a
+    // route query can yield several). May throw if the provider is "down" - the
+    // aggregator handles that.
+    Task<IReadOnlyList<FlightStatusResult>> GetStatusAsync(FlightStatusQuery query, CancellationToken ct);
 }

@@ -33,10 +33,11 @@ cd FlightStatus.Api
 dotnet run
 ```
 
-It listens on `http://localhost:5279`. Quick check:
+It listens on `http://localhost:5279`. Quick checks:
 
 ```
 http://localhost:5279/flights/status?flightNumber=BA2490&date=2026-06-15
+http://localhost:5279/flights/search?from=LHR&to=JFK&date=2026-06-15
 ```
 
 ### 2. Frontend
@@ -50,7 +51,8 @@ npm start
 ```
 
 Open `http://localhost:4200`. The UI calls the API on port 5279 (CORS is already
-allowed for `localhost:4200`).
+allowed for `localhost:4200`). The search form has two tabs: **By flight number** and
+**By route**.
 
 ### 3. Tests
 
@@ -73,6 +75,14 @@ back but not used to pick the record.
 | `OUTAGE` | AeroTrack throws (simulated outage); QuickFlight still answers → graceful fallback, logged as a warning. |
 | `ZZ999`  | Nobody has it → **Unknown** with a message.                             |
 
+### Search by route (date 2026-06-15)
+
+| From → To  | What it shows                                                          |
+|------------|-----------------------------------------------------------------------|
+| `LHR → JFK` | **Two flights** — BA112 (AeroTrack) and VS3 (QuickFlight). Shows the list. |
+| `JFK → LHR` | One flight — BA2490 is in both providers, so it **dedupes** to the freshest (QuickFlight). |
+| `AAA → BBB` | No match → empty list, "No flights found" message.                    |
+
 ## Architecture decisions
 
 - **Provider abstraction.** `IFlightStatusProvider` has two stub implementations
@@ -92,6 +102,14 @@ back but not used to pick the record.
   fields (gate, terminal, delay reason) simply aren't there for QuickFlight results,
   and the UI shows them only when present.
 
+- **Search by route (enhancement).** Agents who don't have a flight number can search
+  by `from`/`to` airport codes. The provider interface takes a single
+  `FlightStatusQuery` (flight number *or* route), and the aggregator returns a **list**
+  (one card per flight, freshest provider wins). A flight-number lookup is just the
+  one-result case of that same logic. Route search is a separate endpoint
+  (`/flights/search`) so the original `/flights/status` single-object response is
+  completely unchanged.
+
 See `spec.md` for the full data model and `reflection.md` for trade-offs and
 assumptions.
 
@@ -105,6 +123,8 @@ assumptions.
 - A provider "failing" means it throws; that's treated the same as no response.
 - The stubs ignore the date for lookups (data is hardcoded) but echo it back in the
   result.
+- Airport codes are 3-letter IATA, matched case-insensitively. A route can match
+  several flights; all are returned, sorted by scheduled departure.
 
 ## Copilot usage
 

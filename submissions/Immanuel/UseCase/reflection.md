@@ -34,6 +34,29 @@ plus the trade-offs I made and what I'd change with more time.
   shared rule still lives in one place (`StatusMapper`). The alternative central
   approach would need a common raw shape, which the two providers don't have.
 
+## Enhancement: search by route
+
+Added after the first cut so an agent without a flight number can search by airport
+pair. Decisions worth noting:
+
+- **Query object over a second method.** I moved the provider interface to a single
+  `FlightStatusQuery` (flight number or route) rather than adding a parallel
+  `GetByRouteAsync`. One code path, easier to extend (e.g. search by airline next).
+- **Aggregator returns a list.** The old "freshest provider wins for the flight"
+  became "group by flight, freshest wins per flight". The single-flight lookup is now
+  just the one-group case - no duplicated selection logic.
+- **Two endpoints, not one.** `/flights/search` returns an array; `/flights/status`
+  still returns a single object. I kept them separate so the original contract and its
+  tests are untouched - returning an array from `/flights/status` would have been a
+  breaking change.
+- **Multi-match returns all flights.** A route can have several flights, so the result
+  is a list sorted by departure. The UI renders one card each.
+
+Trade-off I'm aware of: the flight-number response now also carries `originCode` /
+`destinationCode`. That's additive (extra optional fields), so it doesn't break
+existing callers, but it does mean `/flights/status` and `/flights/search` share the
+same result shape.
+
 ## What I'd do with more time
 
 - Move the API base URL and CORS origin into Angular environment files / config instead

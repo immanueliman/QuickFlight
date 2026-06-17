@@ -17,12 +17,60 @@ h1 {
   margin-top: 0;
 }
 
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.tabs button {
+  background: #f1f5f9;
+  color: #334155;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+}
+
+.tabs button.active {
+  background: #2563eb;
+  color: #fff;
+}
+
 .search {
   display: flex;
   gap: 12px;
   align-items: flex-end;
   flex-wrap: wrap;
-  margin: 20px 0;
+  margin: 14px 0 20px;
+}
+
+.field input.code {
+  width: 70px;
+  text-transform: uppercase;
+}
+
+.empty {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  padding: 12px 14px;
+  border-radius: 8px;
+}
+
+.count {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin: 0 0 8px;
+}
+
+.card + .card {
+  margin-top: 14px;
+}
+
+.flight small {
+  font-weight: 400;
+  color: #6b7280;
+  font-size: 0.8rem;
+  margin-left: 6px;
 }
 
 .field {

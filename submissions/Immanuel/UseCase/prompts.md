@@ -62,3 +62,28 @@ this feature needs. Colour mapping (green/amber/red/grey) is done with a small
 
 Generated a first pass, then rewrote the assumptions and trade-offs in my own words so
 they match what the code actually does.
+
+---
+
+### Enhancement: search by route
+
+**9. "I need to let agents search by from/to airport codes as well as by flight
+number, without breaking the existing flight-number path. Compare a query object vs a
+second interface method, and how to handle a route matching multiple flights."**
+
+Went with the query-object option - one `FlightStatusQuery` carrying either a flight
+number or a route. Rejected the second-method idea because it duplicated the aggregator
+logic. For multi-match I return a list rather than a single result.
+
+**10. "Refactor the aggregator so the same selection logic works for one flight and for
+a route that returns many."**
+
+This produced the group-by-flight-number then keep-freshest approach. I kept it as one
+method returning a list; the endpoint collapses it to a single object for the
+flight-number route. Accepted with a small tweak to sort the list by departure time.
+
+**11. "Generate the Angular tab toggle and route inputs, reusing the existing result
+card for the list."**
+
+Used the structure. I unified both searches into one `results` array so the card markup
+isn't duplicated - flight search puts one item in it, route search puts several.

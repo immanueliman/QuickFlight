@@ -1,13 +1,35 @@
 <div class="page">
   <h1>SkyRoute &middot; Flight Status</h1>
-  <p class="hint">Try BA2490, QF12, AA100, DL55, LH400 or OUTAGE (date 2026-06-15).</p>
+  <p class="hint" *ngIf="mode === 'flight'">Try BA2490, QF12, AA100, DL55, LH400 or OUTAGE (date 2026-06-15).</p>
+  <p class="hint" *ngIf="mode === 'route'">Try LHR &rarr; JFK (two flights) or JFK &rarr; LHR (date 2026-06-15).</p>
+
+  <!-- choose how to search -->
+  <div class="tabs">
+    <button type="button" [class.active]="mode === 'flight'" (click)="setMode('flight')">By flight number</button>
+    <button type="button" [class.active]="mode === 'route'" (click)="setMode('route')">By route</button>
+  </div>
 
   <form class="search" (ngSubmit)="search()">
-    <div class="field">
+    <!-- flight number mode -->
+    <div class="field" *ngIf="mode === 'flight'">
       <label for="flightNumber">Flight number</label>
       <input id="flightNumber" name="flightNumber" type="text"
              [(ngModel)]="flightNumber" placeholder="e.g. BA2490" autocomplete="off" />
     </div>
+
+    <!-- route mode -->
+    <ng-container *ngIf="mode === 'route'">
+      <div class="field">
+        <label for="fromCode">From</label>
+        <input id="fromCode" name="fromCode" type="text" class="code"
+               [(ngModel)]="fromCode" placeholder="LHR" maxlength="3" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="toCode">To</label>
+        <input id="toCode" name="toCode" type="text" class="code"
+               [(ngModel)]="toCode" placeholder="JFK" maxlength="3" autocomplete="off" />
+      </div>
+    </ng-container>
 
     <div class="field">
       <label for="date">Date</label>
@@ -22,10 +44,24 @@
   <!-- error state -->
   <div class="error" *ngIf="error">{{ error }}</div>
 
-  <!-- result card -->
-  <div class="card" *ngIf="result && !error">
+  <!-- nothing found on a route search -->
+  <div class="empty" *ngIf="!error && searched && results.length === 0">
+    No flights found for that route on this date.
+  </div>
+
+  <p class="count" *ngIf="!error && mode === 'route' && results.length > 1">
+    {{ results.length }} flights found
+  </p>
+
+  <!-- result cards (one for a flight lookup, possibly several for a route) -->
+  <div class="card" *ngFor="let result of results">
     <div class="card-head">
-      <span class="flight">{{ result.flightNumber }}</span>
+      <span class="flight">
+        {{ result.flightNumber }}
+        <small *ngIf="result.originCode && result.destinationCode">
+          {{ result.originCode }} &rarr; {{ result.destinationCode }}
+        </small>
+      </span>
       <span class="badge" [ngClass]="statusClass(result.status)">{{ result.status }}</span>
     </div>
 
